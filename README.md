@@ -2,7 +2,7 @@
 
 The errorbar platform as MCP tools — every public API operation (evals, judges/criteria, gates, logs, datasets, aliases, label sets, audit/proving, dedicated endpoints, training) callable from Claude Code, Claude Desktop, Cursor, or any MCP client.
 
-One tool per API operation, 76 tools, generated from the platform's route contracts. Inputs are validated with the same field names and casing the REST API accepts; responses come back exactly as the API returned them (JSON pretty-printed, exports as text), including the API's own error status and message.
+One tool per API operation, 92 tools, generated from the platform's route contracts. Inputs are validated with the same field names and casing the REST API accepts; responses come back exactly as the API returned them (JSON pretty-printed, exports as text), including the API's own error status and message.
 
 > Renamed from `@omnia-voice/mcp` (2026-08-30). The old name is published as a shim that forwards here; update your config when convenient.
 
@@ -36,7 +36,7 @@ claude mcp add errorbar -e ERRORBAR_API_KEY=sk_… -- npx -y @error-bar/mcp
 
 ## Profiles — hand the agent the tools for one job
 
-Seventy-six tools is the complete contract and the wrong thing to give a model with one question: every description is read before the first call, and a long list makes the pick worse. A profile is the handful a job needs, plus the task-shaped tools that answer the job's question directly.
+Ninety-two tools is the complete contract and the wrong thing to give a model with one question: every description is read before the first call, and a long list makes the pick worse. A profile is the handful a job needs, plus the task-shaped tools that answer the job's question directly.
 
 ```bash
 npx -y @error-bar/mcp --profile monitor      # or ERRORBAR_MCP_PROFILE=monitor
@@ -47,7 +47,7 @@ npx -y @error-bar/mcp --profile monitor      # or ERRORBAR_MCP_PROFILE=monitor
 | `setup` | connect traffic and reach the first verdict | `get_setup_status`, `screen_my_traffic`, `list_logs`, `get_trace`, `list_evals`, `get_eval`, `list_criterion_templates`, `list_criteria`, `create_criterion`, `get_criterion`, `run_criterion_alignment`, `is_my_judge_trustworthy` |
 | `monitor` | is quality holding, can the judges be trusted — read-only by construction | `get_setup_status`, `is_my_judge_trustworthy`, `list_criteria`, `get_criterion`, `get_criterion_alignment`, `get_criterion_certificate`, `list_alerts`, `get_judge_settings`, `get_failure_clusters`, `list_refusals`, `list_evals`, `get_eval` |
 | `release` | ship or hold: comparison, gate on the interval, repoint the alias | `can_i_ship`, `screen_my_traffic`, `list_evals`, `get_eval`, `create_eval`, `get_eval_gate`, `get_eval_evidence`, `compare_evals`, `list_aliases`, `upsert_alias`, `get_criterion_certificate`, `verify_document` |
-| `all` (default) | everything: all 76 operations plus the task tools | — |
+| `all` (default) | everything: all 92 operations plus the task tools | — |
 
 `--read-only`, `--no-spend` and `--only` apply on top of a profile.
 

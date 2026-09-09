@@ -89,6 +89,7 @@ const PLATFORM_ROUTES = [
   "DELETE /v1/reward/sessions/{id}",
   "POST /v1/reward/score",
   "POST /v1/reward/sessions/{id}/anchor",
+  "GET /v1/reward/sessions/{id}/anchor",
   "POST /v1/reward/sessions/{id}/resume",
   "GET /v1/reward/sessions/{id}/export",
   "GET /v1/reward/sessions/{id}/environment",
