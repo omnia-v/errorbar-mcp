@@ -2177,7 +2177,7 @@ export const OPERATIONS: readonly Operation[] = [
     "name": "anchor_check",
     "method": "POST",
     "path": "/v1/reward/sessions/{id}/anchor",
-    "summary": "Mid-run anchor: submit the current policy's outputs on your FROZEN prompt set; the server scores them with the session's reward and with the independent anchor judge (corrected for its measured error) and decides whether to HOLD the run — reward up ≥10 points over the last three checks while the anchor moves ≤2, or the anchor ≥10 points below its best.",
+    "summary": "Mid-run anchor: submit the current policy's outputs on your FROZEN prompt set; the server scores them with the session's reward and with the independent anchor judge (corrected for its measured error) and decides whether to HOLD the run — the gap (reward read − anchor read on the same outputs) widened beyond its paired noise since the first check, or the anchor fallen beyond its noise from its best, on two consecutive checks; the hold names its state (grader_fooled / gamed / degrading) and pins the best step. Also returns the seam list: every item with both verdicts and its kind (seam = reward pass, anchor fail).",
     "scope": "platform:write",
     "spends": true,
     "pathParams": [
@@ -2203,7 +2203,7 @@ export const OPERATIONS: readonly Operation[] = [
         "description": "1..64 rollouts: { requestId: string, conversation: string, response?: string } for single-turn, or { requestId, conversation, steps: [{ role: \"assistant\"|\"tool\", content, source?, toolName? }], sessionId? } for agentic sessions. The server renders trajectories through the same instrument trace calibration uses."
       }
     ],
-    "responseSummary": "{ session_id, held: boolean, reason: string|null, pinned_step: string|null (the best anchor point — the checkpoint to ship), point: { step, at, n, reward_rate, anchor_rate, anchor_ci: [lo, hi], anchor_corrected, masked }, underpowered: string|null, history: [AnchorPoint] (last 20), spend_micros }.",
+    "responseSummary": "{ session_id, held: boolean, state: 'clear'|'grader_fooled'|'gamed'|'degrading', reason: string|null, pinned_step: string|null (the best anchor point — the checkpoint to ship), point: { step, at, n, reward_rate, anchor_rate, anchor_ci: [lo, hi], anchor_corrected, masked, gap_se }, underpowered: string|null, history: [AnchorPoint] (last 20), items: [{ request_id, reward_grade, anchor_verdict, kind: 'seam'|'false_fail'|'agree'|'masked' }], counts: { seam, false_fail, agree, masked }, spend_micros }. 409 code=held when already held; 402 budget; 422 no anchor.",
     "notes": "Hold, never kill: a held session refuses score_reward with 409 until resume_reward_session. Points with fewer than 20 gradable prompts hold nothing (underpowered says so). 409 held when already held; 422 when the session has no anchor."
   },
   {
@@ -2267,6 +2267,22 @@ export const OPERATIONS: readonly Operation[] = [
     "responseSummary": "200 application/jsonl; newline-terminated lines. Headers X-Errorbar-Export-Count (lines written), X-Errorbar-Export-Scanned (records read), X-Errorbar-Export-Capped ('true' when the 10,000-row scan cap was hit — narrow with step).",
     "notes": "Only REGISTERED sessions keep records; a session that never scored returns an empty body. 404 for unknown or foreign sessions.",
     "raw": true
+  },
+  {
+    "name": "get_anchor_report",
+    "method": "GET",
+    "path": "/v1/reward/sessions/{id}/anchor",
+    "summary": "The anchor report for a reward session, uncached: the anchor judge's identity and live certificate, the rule in force, every stored check (reward read, anchor read with interval, n), every hold with its state, reason and pinned step (the rule replayed over the history), the current hold, and a summary (checks, holds, widest gap and where). The three-line chart of a run — reward, anchor, holds — a customer can regrade themselves.",
+    "scope": "read",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Session id (created with anchor.criterionId)."
+      }
+    ],
+    "responseSummary": "{ session_id, anchor: { criterion_id, criterion_name, judge_model, judge_mode }, certificate, rule: { window, gap_floor, drop_floor, consecutive, min_prompts }, history: [AnchorPoint…], holds: [{ step, at, state, reason, pinned_step }], current: { held, held_at, held_state, held_reason, pinned_step, resumed_at }, summary: { checks, usable_checks, holds, max_divergence, max_divergence_step, max_gap_widening, max_gap_widening_step, anchor_range, reward_range, first_step, last_step } }. 404 unknown session; 422 no anchor."
   },
   {
     "name": "get_reward_environment",
