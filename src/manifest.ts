@@ -576,6 +576,65 @@ export const OPERATIONS: readonly Operation[] = [
     "notes": "Free (no judging). 404 if the criterion is not in the workspace. Response is Cache-Control: no-store. Hand the WHOLE JSON object to POST /v1/verify to check the signature later. An uncalibrated judge still returns a certificate that honestly says nothing is measured (calibration.measured=false, trust.trust='unmeasured'). enforcement counts refusal-ledger rows from the last 90 days whose subject is this criterion or whose reason names it."
   },
   {
+    "name": "get_criterion_adjudication",
+    "method": "GET",
+    "path": "/v1/criteria/{id}/adjudication",
+    "summary": "A judge's calibration BEFORE and AFTER adjudication, plus the disagreements still open between the judge and the human grades, ranked so the first are the most likely label errors (dominant error direction first, then the rows the judge was most confident about). Free: re-reads stored calibration rows, no judge call. Use it when a certificate is refused or borderline: it is the list of what to read next, each row with the label_id to adjudicate.",
+    "scope": "read",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Criterion id."
+      }
+    ],
+    "responseSummary": "{ criterion_id, aligned_at, before: { n, matrix, se, se_ci, sp, sp_ci, kappa, trust, holdout_active }, after: {…same…}, adjudicated, by_kind: { label_error, judge_error, ambiguous }, adjudications: [{ label_id, request_id, kind, original_verdict, adjudicated_verdict, note, adjudicated_at }], remaining_disagreements, remaining: [{ label_id, request_id, judge_verdict, human_verdict, critique, judge_grade, direction: 'fp'|'fn', in_report_half }], concentration: [{ direction, count, share_of_errors }], certificate_voided }. 404 unknown criterion."
+  },
+  {
+    "name": "adjudicate_label",
+    "method": "POST",
+    "path": "/v1/labels/{id}/adjudicate",
+    "summary": "Settle one judge/human disagreement on the record: label_error (the human grade was wrong — corrected_verdict becomes the label's verdict, the original is kept, judges calibrated on the row are flagged evidence-revised until re-calibrated), judge_error (the grade stands; confirmed judge error), or ambiguous (neither side is ground truth; withdrawn from every calibration). A second adjudication overwrites the first; both are audit-logged. Owner/admin key.",
+    "scope": "evals:write",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Label id, or the label's request_id — both resolve."
+      }
+    ],
+    "body": [
+      {
+        "name": "adjudication",
+        "type": "string",
+        "description": "label_error | judge_error | ambiguous.",
+        "enum": [
+          "label_error",
+          "judge_error",
+          "ambiguous"
+        ],
+        "required": true
+      },
+      {
+        "name": "corrected_verdict",
+        "type": "string",
+        "description": "pass | fail. Required for label_error.",
+        "enum": [
+          "pass",
+          "fail"
+        ]
+      },
+      {
+        "name": "note",
+        "type": "string",
+        "description": "Why — kept on the record and in the audit log."
+      }
+    ],
+    "responseSummary": "201 the label with its adjudication record { label_id, request_id, kind, original_verdict, adjudicated_verdict, note, adjudicated_at }. 400 label_error without corrected_verdict; 403 not owner/admin; 404 unknown label."
+  },
+  {
     "name": "scan_criterion_suspects",
     "method": "POST",
     "path": "/v1/criteria/{id}/scan",

@@ -1,7 +1,7 @@
 /**
  * Profiles — curated views of the tool set, one per job.
  *
- * Ninety-two one-per-endpoint tools are the complete contract, and the wrong
+ * Ninety-four one-per-endpoint tools are the complete contract, and the wrong
  * thing to hand a model that has one question: every tool description is read
  * before the first call (~15–20k tokens for the full set), and a long list
  * makes the pick worse, not better. A profile is the handful of tools a job
@@ -42,6 +42,8 @@ export const PROFILES: Record<string, Profile> = {
       "get_criterion",
       "run_criterion_alignment",
       "is_my_judge_trustworthy",
+      "get_criterion_adjudication",
+      "adjudicate_label",
     ],
   },
   monitor: {

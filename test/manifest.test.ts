@@ -24,6 +24,8 @@ const PLATFORM_ROUTES = [
   "PATCH /v1/criteria/{id}",
   "DELETE /v1/criteria/{id}",
   "POST /v1/criteria/{id}/scan",
+  "GET /v1/criteria/{id}/adjudication",
+  "POST /v1/labels/{id}/adjudicate",
   "GET /v1/criteria",
   "POST /v1/criteria",
   "POST /v1/criteria/suggest",
