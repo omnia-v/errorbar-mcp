@@ -92,6 +92,7 @@ const PLATFORM_ROUTES = [
   "POST /v1/reward/score",
   "POST /v1/reward/sessions/{id}/anchor",
   "GET /v1/reward/sessions/{id}/anchor",
+  "POST /v1/reward/sessions/{id}/anchor/attempt",
   "POST /v1/reward/sessions/{id}/anchor/review",
   "POST /v1/reward/sessions/{id}/confirm",
   "POST /v1/reward/sessions/{id}/resume",
@@ -147,7 +148,7 @@ describe("the gate tools", () => {
   const byName = Object.fromEntries(OPERATIONS.map((o) => [o.name, o]));
 
   it("exposes the whole decision surface", () => {
-    for (const t of ["anchor_check", "get_anchor_report", "confirm_improvement", "review_anchor_hold", "resume_reward_session"]) {
+    for (const t of ["anchor_check", "get_anchor_report", "confirm_improvement", "review_anchor_hold", "report_anchor_attempt", "resume_reward_session"]) {
       expect(byName[t], t).toBeTruthy();
     }
   });
@@ -182,5 +183,16 @@ describe("the gate tools", () => {
   it("resume asks what changed and warns an unchanged anchor is refused", () => {
     const changed = byName.resume_reward_session.body?.find((b: { name: string }) => b.name === "changed");
     expect(changed?.description).toContain("Re-certify first");
+  });
+});
+
+describe("measurement state", () => {
+  const byName = Object.fromEntries(OPERATIONS.map((o) => [o.name, o]));
+
+  it("report_anchor_attempt spends nothing and returns the state", () => {
+    const o = byName.report_anchor_attempt;
+    expect(o.spends).toBeFalsy();
+    expect(o.responseSummary).toContain("unavailable");
+    expect(o.notes).toContain("nobody is watching the run, not that the run is bad");
   });
 });

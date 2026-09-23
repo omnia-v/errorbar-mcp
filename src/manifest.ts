@@ -2165,7 +2165,7 @@ export const OPERATIONS: readonly Operation[] = [
         "description": "{ criterionId, minImprovement?, instruments? }. criterionId is an INDEPENDENT calibrated judge: a different criterion whose model or prompt differs from every reward judge (a clone with a new id is refused), aligned ≥0.9, not drift-flagged, same unit — it enables anchor_check, confirm_improvement and review_anchor_hold. minImprovement (0..1, default 0) is the truth-scale improvement a checkpoint must clear before the gate calls it SUPPORTED. instruments (≤8) are other measurements read beside the anchor — [{ name, kind: \"customer_eval\"|\"programmatic\"|\"judge\", scale?: \"unit\"|\"threshold\", passThreshold?, description? }] — each anchor item may then carry measurements: { name: score }; each is reported separately and a directional conflict between two of them is REVIEW, never an average."
       }
     ],
-    "responseSummary": "201 RewardSession (see list_reward_sessions) including certificates[] and anchor.",
+    "responseSummary": "201 RewardSession (see list_reward_sessions) including certificates[] and anchor (with anchor.measurement: is the gate still measuring — valid | retrying | unavailable).",
     "notes": "Requires an OWNER/ADMIN key with platform:write. 402 when the wallet cannot hold the budget; 400 with the exact reason when the reward or anchor fails validation."
   },
   {
@@ -2341,6 +2341,37 @@ export const OPERATIONS: readonly Operation[] = [
     ],
     "responseSummary": "{ conclusion: 'confirmed'|'refuted'|'inconclusive', effect: 'hold_confirmed'|'anchor_degraded'|'none', reviewed: number }",
     "notes": "If humans pass what the anchor failed, the anchor is marked degraded for this run: the hold is suppressed, later checks answer REVIEW with recalibrate_anchor as the required evidence, and it stays that way until the instrument itself changes and is re-certified. The gate will not keep holding a run on a judge your people have shown to be wrong."
+  },
+  {
+    "name": "report_anchor_attempt",
+    "method": "POST",
+    "path": "/v1/reward/sessions/{id}/anchor/attempt",
+    "summary": "Report a check that could NOT complete — the step and the refusal, verbatim. A gate that stops receiving checks looks exactly like a quiet run; this is how it says otherwise. Spends nothing, judges nothing, decides nothing.",
+    "scope": "platform:write",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Session id."
+      }
+    ],
+    "body": [
+      {
+        "name": "step",
+        "type": "string",
+        "required": true,
+        "description": "The step whose check failed."
+      },
+      {
+        "name": "error",
+        "type": "string",
+        "required": true,
+        "description": "≤2000 chars: the refusal as the trainer saw it (a 504, a 422, a timeout)."
+      }
+    ],
+    "responseSummary": "{ recorded: number, measurement: { state: 'valid'|'retrying'|'unavailable', last_check_at, since_ms, expected_interval_ms, missed, failed_attempts, last_error, reason } }",
+    "notes": "A check that lands clears the attempts. Two reported failures, or three missed intervals of the rhythm the session set for itself, make the state unavailable — which says nobody is watching the run, not that the run is bad. The official Python client calls this automatically when an anchor part fails."
   },
   {
     "name": "resume_reward_session",
