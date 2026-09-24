@@ -92,6 +92,9 @@ const PLATFORM_ROUTES = [
   "POST /v1/reward/score",
   "POST /v1/reward/sessions/{id}/anchor",
   "GET /v1/reward/sessions/{id}/anchor",
+  "POST /v1/reward/sessions/{id}/anchor/attempt",
+  "POST /v1/reward/sessions/{id}/anchor/review",
+  "POST /v1/reward/sessions/{id}/confirm",
   "POST /v1/reward/sessions/{id}/resume",
   "GET /v1/reward/sessions/{id}/export",
   "GET /v1/reward/sessions/{id}/environment",
@@ -137,5 +140,59 @@ describe("manifest", () => {
     const spend = OPERATIONS.filter((o) => o.spends).map((o) => o.name);
     expect(spend).toEqual(expect.arrayContaining(["create_eval", "start_grpo_run", "create_fine_tuning_job", "create_dedicated_endpoint"]));
     for (const o of OPERATIONS) if (o.spends) expect(o.method).not.toBe("GET");
+  });
+});
+
+// ── the gate's decision surface: the tools must say what the answer carries ──
+describe("the gate tools", () => {
+  const byName = Object.fromEntries(OPERATIONS.map((o) => [o.name, o]));
+
+  it("exposes the whole decision surface", () => {
+    for (const t of ["anchor_check", "get_anchor_report", "confirm_improvement", "review_anchor_hold", "report_anchor_attempt", "resume_reward_session"]) {
+      expect(byName[t], t).toBeTruthy();
+    }
+  });
+
+  it("anchor_check caps a part by TIME, not storage", () => {
+    const items = byName.anchor_check.body?.find((b: { name: string }) => b.name === "items");
+    expect(items?.description).toContain("1..24");
+    expect(items?.description).toContain("TIME");
+  });
+
+  it("anchor_check does not call the pin the best anchor read", () => {
+    const r = byName.anchor_check.responseSummary ?? "";
+    expect(r).not.toContain("the best anchor point");
+    expect(r).toContain("NOT the highest anchor read");
+    expect(r).toContain("improvement");
+  });
+
+  it("confirm_improvement is the FRESH-sample record and says so", () => {
+    const o = byName.confirm_improvement;
+    expect(o.path).toBe("/v1/reward/sessions/{id}/confirm");
+    expect(o.summary).toContain("NO anchor check has seen");
+    expect(o.responseSummary).toContain("INSUFFICIENT");
+    expect(o.responseSummary).toContain("additional_pairs");
+  });
+
+  it("review_anchor_hold says refuting degrades the anchor, not the run", () => {
+    const o = byName.review_anchor_hold;
+    expect(o.responseSummary).toContain("anchor_degraded");
+    expect(o.notes).toContain("recalibrate_anchor");
+  });
+
+  it("resume asks what changed and warns an unchanged anchor is refused", () => {
+    const changed = byName.resume_reward_session.body?.find((b: { name: string }) => b.name === "changed");
+    expect(changed?.description).toContain("Re-certify first");
+  });
+});
+
+describe("measurement state", () => {
+  const byName = Object.fromEntries(OPERATIONS.map((o) => [o.name, o]));
+
+  it("report_anchor_attempt spends nothing and returns the state", () => {
+    const o = byName.report_anchor_attempt;
+    expect(o.spends).toBeFalsy();
+    expect(o.responseSummary).toContain("unavailable");
+    expect(o.notes).toContain("nobody is watching the run, not that the run is bad");
   });
 });

@@ -2162,10 +2162,10 @@ export const OPERATIONS: readonly Operation[] = [
       {
         "name": "anchor",
         "type": "object",
-        "description": "{ criterionId } — an INDEPENDENT calibrated judge: a different criterion whose model or prompt differs from every reward judge (a clone with a new id is refused), aligned ≥0.9, not drift-flagged, same unit. Enables anchor_check."
+        "description": "{ criterionId, minImprovement?, instruments? }. criterionId is an INDEPENDENT calibrated judge: a different criterion whose model or prompt differs from every reward judge (a clone with a new id is refused), aligned ≥0.9, not drift-flagged, same unit — it enables anchor_check, confirm_improvement and review_anchor_hold. minImprovement (0..1, default 0) is the truth-scale improvement a checkpoint must clear before the gate calls it SUPPORTED. instruments (≤8) are other measurements read beside the anchor — [{ name, kind: \"customer_eval\"|\"programmatic\"|\"judge\", scale?: \"unit\"|\"threshold\", passThreshold?, description? }] — each anchor item may then carry measurements: { name: score }; each is reported separately and a directional conflict between two of them is REVIEW, never an average."
       }
     ],
-    "responseSummary": "201 RewardSession (see list_reward_sessions) including certificates[] and anchor.",
+    "responseSummary": "201 RewardSession (see list_reward_sessions) including certificates[] and anchor (with anchor.measurement: is the gate still measuring — valid | retrying | unavailable).",
     "notes": "Requires an OWNER/ADMIN key with platform:write. 402 when the wallet cannot hold the budget; 400 with the exact reason when the reward or anchor fails validation."
   },
   {
@@ -2259,17 +2259,62 @@ export const OPERATIONS: readonly Operation[] = [
         "type": "array",
         "items": "object",
         "required": true,
-        "description": "1..64 rollouts: { requestId: string, conversation: string, response?: string } for single-turn, or { requestId, conversation, steps: [{ role: \"assistant\"|\"tool\", content, source?, toolName? }], sessionId? } for agentic sessions. The server renders trajectories through the same instrument trace calibration uses."
+        "description": "1..24 rollouts (the cap is TIME: every item is judged inside this request — send a larger frozen set in parts with final:false on all but the last; 16 per part is the client default): { requestId: string, conversation: string, response?: string } for single-turn, or { requestId, conversation, steps: [{ role: \"assistant\"|\"tool\", content, source?, toolName? }], sessionId? } for agentic sessions. The server renders trajectories through the same instrument trace calibration uses. External-reward sessions add rewardScore per item; a session created with anchor.instruments may add measurements: { name: score }."
       }
     ],
-    "responseSummary": "{ session_id, held: boolean, state: 'clear'|'grader_fooled'|'gamed'|'degrading', reason: string|null, pinned_step: string|null (the best anchor point — the checkpoint to ship), point: { step, at, n, reward_rate, anchor_rate, anchor_ci: [lo, hi], anchor_corrected, masked, gap_se }, underpowered: string|null, history: [AnchorPoint] (last 20), items: [{ request_id, reward_grade, anchor_verdict, kind: 'seam'|'false_fail'|'agree'|'masked' }], counts: { seam, false_fail, agree, masked }, spend_micros }. 409 code=held when already held; 402 budget; 422 no anchor.",
-    "notes": "Hold, never kill: a held session refuses score_reward with 409 until resume_reward_session. Points with fewer than 20 gradable prompts hold nothing (underpowered says so). 409 held when already held; 422 when the session has no anchor."
+    "responseSummary": "{ session_id, held: boolean, state: 'clear'|'grader_fooled'|'gamed'|'degrading', reason: string|null, pinned_step: string|null (the PIN: the earliest checkpoint that cannot be separated from the best one, with the baseline as a candidate — NOT the highest anchor read), improvement: { anchor, reward } paired difference vs the run's baseline with a look-corrected interval (supported only when it clears anchor.minImprovement; contradicted when wholly below zero), pin: { step, best_step, tied_steps, supported, reason }, warnings?: string[] (e.g. a later step superseded a check whose final part never landed), point: { step, at, n, reward_rate, anchor_rate, anchor_ci: [lo, hi], anchor_corrected, masked, seam, seam_share, seam_se, gap_se } (the GAP is the rise of seam_share — outputs the reward passes and the anchor fails — since the baseline), underpowered: string|null, history: [AnchorPoint] (last 20), items: [{ request_id, reward_grade, anchor_verdict, kind: 'seam'|'false_fail'|'agree'|'masked' }], counts: { seam, false_fail, agree, masked }, spend_micros }. 409 code=held when already held; 402 code=budget_exhausted | session_expired | session_inactive; 422 no anchor.",
+    "notes": "Hold, never kill: a held session refuses score_reward with 409 until resume_reward_session. A signature must show on TWO CONSECUTIVE checks before a hold, and each is measured against its own paired noise (floors: gap 5 points, drop 2), not a fixed threshold. Points with fewer than 20 gradable prompts hold nothing (underpowered says so). Send a frozen set larger than 24 in parts (final:false on all but the last); a LATER step supersedes a check whose final part never landed and says so in warnings, an EARLIER one is refused 422. 409 held when already held; 422 when the session has no anchor."
   },
   {
-    "name": "resume_reward_session",
+    "name": "confirm_improvement",
     "method": "POST",
-    "path": "/v1/reward/sessions/{id}/resume",
-    "summary": "A human clears an anchor hold on a reward session; the history is kept and the next anchor check decides again from the same window. Never automatic.",
+    "path": "/v1/reward/sessions/{id}/confirm",
+    "summary": "The end-of-run Improvement Record: measure a candidate checkpoint against the baseline on prompts NO anchor check has seen. The frozen set chose the checkpoint, so it cannot also be the evidence that the checkpoint is better — this is the fresh sample that can be.",
+    "scope": "platform:write",
+    "spends": true,
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Session id (created with anchor.criterionId)."
+      }
+    ],
+    "body": [
+      {
+        "name": "baselineStep",
+        "type": "string",
+        "required": true,
+        "description": "The step to compare against (usually \"0\", the untrained policy)."
+      },
+      {
+        "name": "candidateStep",
+        "type": "string",
+        "required": true,
+        "description": "The checkpoint you would ship — normally the pin from the last anchor check."
+      },
+      {
+        "name": "items",
+        "type": "array",
+        "items": "object",
+        "required": true,
+        "description": "1..64 per part: { requestId, arm: \"baseline\"|\"candidate\", conversation, response }. Both arms on the SAME fresh prompts; a prompt any check has seen is refused 422 naming it. Send more in parts with final:false on all but the last."
+      },
+      {
+        "name": "final",
+        "type": "boolean",
+        "required": false,
+        "description": "false: store this part and wait for more (answered partial). Default true: decide over every stored item."
+      }
+    ],
+    "responseSummary": "{ confirmation: { baseline_step, candidate_step, n, observed: { estimate, ci }, corrected: { estimate, ci }|null, min_improvement, verdict: 'SUPPORTED'|'INSUFFICIENT'|'CONTRADICTED', additional_pairs: number|null (how many more fresh prompts would settle an INSUFFICIENT), reason } } — or { partial: true, received, total } for a non-final part.",
+    "notes": "A fixed-sample 95% interval, not the look-corrected one: nothing was selected on this data. Allowed on a HELD session — a hold is exactly when you want this number. 422 when a prompt was used in a check or the session has no anchor; 402 when the session budget is spent."
+  },
+  {
+    "name": "review_anchor_hold",
+    "method": "POST",
+    "path": "/v1/reward/sessions/{id}/anchor/review",
+    "summary": "Send human verdicts on the outputs a hold flagged (the ones the reward passed and the anchor failed). The gate reads them as evidence about the ANCHOR, not only about the run: agreeing confirms the hold, refuting DEGRADES the anchor for this run.",
     "scope": "platform:write",
     "pathParams": [
       {
@@ -2277,6 +2322,83 @@ export const OPERATIONS: readonly Operation[] = [
         "type": "string",
         "required": true,
         "description": "Session id."
+      }
+    ],
+    "body": [
+      {
+        "name": "step",
+        "type": "string",
+        "required": true,
+        "description": "The held check's step."
+      },
+      {
+        "name": "verdicts",
+        "type": "array",
+        "items": "object",
+        "required": true,
+        "description": "1..500 of { request_id, verdict: \"pass\"|\"fail\" } — your people's reading of the items named in the hold's required_evidence."
+      }
+    ],
+    "responseSummary": "{ conclusion: 'confirmed'|'refuted'|'inconclusive', effect: 'hold_confirmed'|'anchor_degraded'|'none', reviewed: number }",
+    "notes": "If humans pass what the anchor failed, the anchor is marked degraded for this run: the hold is suppressed, later checks answer REVIEW with recalibrate_anchor as the required evidence, and it stays that way until the instrument itself changes and is re-certified. The gate will not keep holding a run on a judge your people have shown to be wrong."
+  },
+  {
+    "name": "report_anchor_attempt",
+    "method": "POST",
+    "path": "/v1/reward/sessions/{id}/anchor/attempt",
+    "summary": "Report a check that could NOT complete — the step and the refusal, verbatim. A gate that stops receiving checks looks exactly like a quiet run; this is how it says otherwise. Spends nothing, judges nothing, decides nothing.",
+    "scope": "platform:write",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Session id."
+      }
+    ],
+    "body": [
+      {
+        "name": "step",
+        "type": "string",
+        "required": true,
+        "description": "The step whose check failed."
+      },
+      {
+        "name": "error",
+        "type": "string",
+        "required": true,
+        "description": "≤2000 chars: the refusal as the trainer saw it (a 504, a 422, a timeout)."
+      }
+    ],
+    "responseSummary": "{ recorded: number, measurement: { state: 'valid'|'retrying'|'unavailable', last_check_at, since_ms, expected_interval_ms, missed, failed_attempts, last_error, reason } }",
+    "notes": "A check that lands clears the attempts. Two reported failures, or three missed intervals of the rhythm the session set for itself, make the state unavailable — which says nobody is watching the run, not that the run is bad. The official Python client calls this automatically when an anchor part fails."
+  },
+  {
+    "name": "resume_reward_session",
+    "method": "POST",
+    "path": "/v1/reward/sessions/{id}/resume",
+    "summary": "A human clears an anchor hold on a reward session; the history is kept and the next anchor check decides again from the same window. Never automatic. Say what you changed: reward/environment starts a new segment (the gap is measured from it), anchor demands a re-certified instrument, none warns the next check will likely hold again.",
+    "scope": "platform:write",
+    "pathParams": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "description": "Session id."
+      }
+    ],
+    "body": [
+      {
+        "name": "changed",
+        "type": "string",
+        "required": false,
+        "description": "What you changed before resuming: \"reward\" | \"environment\" (starts a new segment) | \"anchor\" (requires a standing certificate with a NEW fingerprint — the same instrument that held the run is refused 409 \"Re-certify first\") | \"none\" (default; warns the next check decides from the same history)."
+      },
+      {
+        "name": "note",
+        "type": "string",
+        "required": false,
+        "description": "≤500 chars, stored with the resume for the audit trail."
       }
     ],
     "responseSummary": "RewardSession with anchor.held = false.",
